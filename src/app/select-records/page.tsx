@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { getRecords } from '@/app/actions/metadata';
-import { Loader2, ArrowRight, ArrowLeft, Search, CheckCircle } from 'lucide-react';
+import { Loader2, ArrowRight, ArrowLeft, Search, CheckCircle, ArrowUp, ArrowDown } from 'lucide-react';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 import { MigrationConfig } from '@/lib/migration-engine/types';
@@ -20,6 +20,7 @@ export default function SelectRecordsPage() {
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const [searchQuery, setSearchQuery] = useState('');
     const [debouncedSearch, setDebouncedSearch] = useState('');
+    const [sortConfig, setSortConfig] = useState<{ key: keyof RecordItem; direction: 'asc' | 'desc' } | null>(null);
 
     useEffect(() => {
         // Load config from local storage
@@ -46,7 +47,7 @@ export default function SelectRecordsPage() {
         async function fetchRecords() {
             setLoading(true);
             try {
-                const results = await getRecords(config!.rootObject, debouncedSearch, 50);
+                const results = await getRecords(config!.rootObject, debouncedSearch, 250);
                 setRecords(results);
             } catch (err) {
                 console.error(err);
@@ -78,6 +79,29 @@ export default function SelectRecordsPage() {
         localStorage.setItem('migrationConfig', JSON.stringify(newConfig));
         window.location.href = '/migrate';
     };
+
+    const handleSort = (key: keyof RecordItem) => {
+        let direction: 'asc' | 'desc' = 'asc';
+        if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+            direction = 'desc';
+        }
+        setSortConfig({ key, direction });
+    };
+
+    const sortedRecords = [...records].sort((a, b) => {
+        if (!sortConfig) return 0;
+
+        let aValue = a[sortConfig.key];
+        let bValue = b[sortConfig.key];
+
+        if (aValue < bValue) {
+            return sortConfig.direction === 'asc' ? -1 : 1;
+        }
+        if (aValue > bValue) {
+            return sortConfig.direction === 'asc' ? 1 : -1;
+        }
+        return 0;
+    });
 
     if (!config) return null;
 
@@ -116,15 +140,34 @@ export default function SelectRecordsPage() {
                             <table className="w-full text-left text-sm">
                                 <thead className="bg-gray-50 border-b">
                                     <tr>
-                                        <th className="p-3 w-12 text-center">
-                                            {/* Select All could go here logic permitting */}
+                                        <th className="p-3 w-12 text-center"></th>
+                                        <th
+                                            className="p-3 font-medium text-gray-700 cursor-pointer hover:bg-gray-100 transition-colors"
+                                            onClick={() => handleSort('Name')}
+                                        >
+                                            <div className="flex items-center gap-2">
+                                                Name / ID
+                                                {sortConfig?.key === 'Name' && (
+                                                    sortConfig.direction === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />
+                                                )}
+                                            </div>
                                         </th>
-                                        <th className="p-3 font-medium text-gray-700">Name / ID</th>
-                                        <th className="p-3 font-medium text-gray-700">Created Date</th>
+                                        <th
+                                            className="p-3 font-medium text-gray-700 cursor-pointer hover:bg-gray-100 transition-colors"
+                                            onClick={() => handleSort('CreatedDate')}
+                                        >
+                                            <div className="flex items-center gap-2">
+                                                Created Date
+                                                {sortConfig?.key === 'CreatedDate' && (
+                                                    sortConfig.direction === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />
+                                                )}
+                                            </div>
+                                        </th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y">
-                                    {records.map(rec => {
+                                    {sortedRecords.map(rec => {
+                                        // ...
                                         const isSelected = selectedIds.has(rec.Id);
                                         return (
                                             <tr
@@ -155,7 +198,7 @@ export default function SelectRecordsPage() {
                     </div>
 
                     <div className="mt-4 text-xs text-gray-400 text-center">
-                        Showing top 50 matches. Search to find specific records.
+                        Showing top 250 matches. Search to find specific records.
                     </div>
                 </div>
 
@@ -173,6 +216,6 @@ export default function SelectRecordsPage() {
                     </button>
                 </div>
             </div>
-        </main>
+        </main >
     );
 }

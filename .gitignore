@@ -42,3 +42,4 @@ next-env.d.ts
 
 # local runtime data
 migration-jobs.json
+session-store.json

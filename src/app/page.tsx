@@ -2,23 +2,24 @@ import { ConnectionCard } from '@/components/connection-card';
 import { Database, ArrowRightLeft, ShieldCheck } from 'lucide-react';
 import { cookies } from 'next/headers';
 import Link from 'next/link';
+import { getSession } from '@/lib/session-store';
 
 export default async function Home() {
   const cookieStore = await cookies();
-  const sourceToken = cookieStore.get('sf_source_access_token');
-  const targetToken = cookieStore.get('sf_target_access_token');
+  const sourceSessionId = cookieStore.get('sf_source_session')?.value;
+  const targetSessionId = cookieStore.get('sf_target_session')?.value;
 
-  const sourceOrgName = cookieStore.get('sf_source_org_name')?.value;
-  const targetOrgName = cookieStore.get('sf_target_org_name')?.value;
+  const sourceSession = sourceSessionId ? getSession(sourceSessionId) : undefined;
+  const targetSession = targetSessionId ? getSession(targetSessionId) : undefined;
 
-  const sourceUsername = cookieStore.get('sf_source_username')?.value;
-  const targetUsername = cookieStore.get('sf_target_username')?.value;
+  const sourceOrgName = sourceSession?.orgName;
+  const targetOrgName = targetSession?.orgName;
 
-  // In a real app, we would validate these tokens against SF to get the username.
-  // For MVP, if token exists, we assume connected.
+  const sourceUsername = sourceSession?.username;
+  const targetUsername = targetSession?.username;
 
-  const isSourceConnected = !!sourceToken;
-  const isTargetConnected = !!targetToken;
+  const isSourceConnected = !!sourceSession;
+  const isTargetConnected = !!targetSession;
   const readyToMigrate = isSourceConnected && isTargetConnected;
 
   return (

@@ -102,7 +102,7 @@ export class Migrator {
             }
         }
 
-        const query = buildQuery({ objectName, fields, whereClause, limit: 100 });
+        const query = buildQuery({ objectName, fields, whereClause });
 
         // 3. Fetch Records
         this.log(`Querying ${objectName} from Source...`);
@@ -165,14 +165,25 @@ export class Migrator {
             return newRec;
         });
 
-        // 4. Insert into Target
-        this.log(`Inserting ${recordsToInsert.length} records into Target...`);
-        const results = await this.targetConn.sobject(objectName).create(recordsToInsert);
+        // 4. Insert into Target in batches of 200 (Salesforce API limit per call)
+        const BATCH_SIZE = 200;
+        const allResults: any[] = [];
+        const total = recordsToInsert.length;
+        this.log(`Inserting ${total} records into Target in batches of ${BATCH_SIZE}...`);
+
+        for (let i = 0; i < recordsToInsert.length; i += BATCH_SIZE) {
+            const batch = recordsToInsert.slice(i, i + BATCH_SIZE);
+            const batchNum = Math.floor(i / BATCH_SIZE) + 1;
+            const totalBatches = Math.ceil(total / BATCH_SIZE);
+            this.log(`Inserting batch ${batchNum}/${totalBatches} (${batch.length} records)...`);
+            const batchResults = await this.targetConn.sobject(objectName).create(batch);
+            allResults.push(...(Array.isArray(batchResults) ? batchResults : [batchResults]));
+        }
 
         // 5. Update ID Map
         const successfulSourceIds: string[] = [];
         let successCount = 0;
-        results.forEach((res, index) => {
+        allResults.forEach((res, index) => {
             if (res.success) {
                 const sourceId = records[index].Id;
                 const targetId = res.id;

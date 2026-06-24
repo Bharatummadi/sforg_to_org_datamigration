@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createOAuth2Client, createConnection } from '@/lib/salesforce/client';
+import { createConnection } from '@/lib/salesforce/client';
 import { cookies } from 'next/headers';
+import { saveSession } from '@/lib/session-store';
 
 export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
@@ -23,8 +24,8 @@ export async function GET(request: NextRequest) {
         }, { status: 400 });
     }
 
-    const origin = request.nextUrl.origin;
-    const redirectUri = `${origin}/api/oauth/callback`; // Must match Login URI exactly
+    // const origin = request.nextUrl.origin;
+    const redirectUri = `http://localhost:3000/api/oauth/callback`; // Must match Login URI exactly
 
     // PKCE & Env: Retrieve verifier and env
     const cookieStore = await cookies();
@@ -68,27 +69,25 @@ export async function GET(request: NextRequest) {
 
         const userInfo = await response.json();
 
-        cookieStore.set(`sf_${type}_access_token`, userInfo.access_token, { secure: true, httpOnly: true });
-        cookieStore.set(`sf_${type}_instance_url`, userInfo.instance_url, { secure: true, httpOnly: true });
+        let orgName: string | undefined;
+        let username: string | undefined;
 
         // Fetch Org Name & Username
         try {
             const conn = createConnection({ accessToken: userInfo.access_token, instanceUrl: userInfo.instance_url });
 
             // Parallel fetch: Org Name & Identity
-            // Cast to unknown first to satisfy TS intersection check
             const [orgResult, identity] = await Promise.all([
                 conn.query('SELECT Name, OrganizationType FROM Organization LIMIT 1') as unknown as Promise<any>,
                 conn.identity()
             ]);
 
             if (orgResult.records && orgResult.records.length > 0) {
-                const orgName = orgResult.records[0].Name;
-                cookieStore.set(`sf_${type}_org_name`, orgName, { secure: true, httpOnly: true });
+                orgName = orgResult.records[0].Name;
             }
 
             if (identity && identity.username) {
-                cookieStore.set(`sf_${type}_username`, identity.username, { secure: true, httpOnly: true });
+                username = identity.username;
             }
 
         } catch (orgErr) {
@@ -96,11 +95,27 @@ export async function GET(request: NextRequest) {
             // Don't fail the whole login if this fails
         }
 
+        // Store full session server-side; put only the short ID in the cookie
+        const sessionId = saveSession({
+            accessToken: userInfo.access_token,
+            instanceUrl: userInfo.instance_url,
+            orgName,
+            username,
+        });
+
+        // Delete old large token cookies if they exist
+        cookieStore.delete(`sf_${type}_access_token`);
+        cookieStore.delete(`sf_${type}_instance_url`);
+        cookieStore.delete(`sf_${type}_org_name`);
+        cookieStore.delete(`sf_${type}_username`);
+
+        cookieStore.set(`sf_${type}_session`, sessionId, { secure: true, httpOnly: true, path: '/' });
+
         // Clean up verifier
         cookieStore.delete(`sf_verifier_${type}`);
         cookieStore.delete(`sf_env_${type}`);
 
-        return NextResponse.redirect(`${origin}/`);
+        return NextResponse.redirect(`http://localhost:3000/`);
     } catch (error) {
         console.error('OAuth Error:', error);
         return NextResponse.json({ error: 'Failed to authenticate' }, { status: 500 });

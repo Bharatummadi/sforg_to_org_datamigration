@@ -3,6 +3,7 @@ import { cookies } from 'next/headers';
 import { JobManager } from '@/lib/migration-engine/job-manager';
 import { Migrator } from '@/lib/migration-engine/migrator';
 import { MigrationConfig } from '@/lib/migration-engine/types';
+import { getSession } from '@/lib/session-store';
 
 export async function POST(request: NextRequest) {
     try {
@@ -10,20 +11,21 @@ export async function POST(request: NextRequest) {
         const { rootObject, children, selectedFields, sourceRecordIds } = body;
 
         const cookieStore = await cookies();
-        const sourceToken = cookieStore.get('sf_source_access_token')?.value;
-        const sourceInstance = cookieStore.get('sf_source_instance_url')?.value;
-        const targetToken = cookieStore.get('sf_target_access_token')?.value;
-        const targetInstance = cookieStore.get('sf_target_instance_url')?.value;
+        const sourceSessionId = cookieStore.get('sf_source_session')?.value;
+        const targetSessionId = cookieStore.get('sf_target_session')?.value;
 
-        if (!sourceToken || !sourceInstance || !targetToken || !targetInstance) {
-            return NextResponse.json({ error: 'Missing source or target connection' }, { status: 401 });
+        const sourceSession = sourceSessionId ? getSession(sourceSessionId) : undefined;
+        const targetSession = targetSessionId ? getSession(targetSessionId) : undefined;
+
+        if (!sourceSession || !targetSession) {
+            return NextResponse.json({ error: 'Missing or expired source/target session' }, { status: 401 });
         }
 
         const config: MigrationConfig = {
-            sourceAccessToken: sourceToken,
-            sourceInstanceUrl: sourceInstance,
-            targetAccessToken: targetToken,
-            targetInstanceUrl: targetInstance,
+            sourceAccessToken: sourceSession.accessToken,
+            sourceInstanceUrl: sourceSession.instanceUrl,
+            targetAccessToken: targetSession.accessToken,
+            targetInstanceUrl: targetSession.instanceUrl,
             rootObject,
             children: children || [],
             selectedFields: selectedFields || {},

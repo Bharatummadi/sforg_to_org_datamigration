@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import { getObjectDetails } from '@/app/actions/metadata';
-import { MigrationConfig, MigrationNode, ObjectDescribe, SalesforceField } from '@/lib/migration-engine/types';
-import { Loader2, ArrowRight, ArrowLeft, ChevronDown, ChevronRight, CheckSquare, Square } from 'lucide-react';
+import { MigrationConfig, MigrationNode, ObjectDescribe } from '@/lib/migration-engine/types';
+import { saveTemplate } from '@/lib/templates';
+import { Loader2, ArrowRight, ArrowLeft, ChevronDown, ChevronRight, CheckSquare, Square, BookmarkPlus, XCircle } from 'lucide-react';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 
@@ -13,6 +14,9 @@ export default function SelectFieldsPage() {
     const [objectDescribes, setObjectDescribes] = useState<Record<string, ObjectDescribe>>({});
     const [selectedFields, setSelectedFields] = useState<Record<string, Set<string>>>({});
     const [expandedObjects, setExpandedObjects] = useState<Set<string>>(new Set());
+    const [showSaveModal, setShowSaveModal] = useState(false);
+    const [templateName, setTemplateName] = useState('');
+    const [savedBanner, setSavedBanner] = useState<string | null>(null);
 
     // Helper to get all object names from config recursively
     const getAllObjectNames = (node: { rootObject: string, children: MigrationNode[] }) => {
@@ -121,21 +125,32 @@ export default function SelectFieldsPage() {
         });
     };
 
-    const handleNext = () => {
-        if (!config) return;
-
-        // Convert Sets to arrays
+    const getFinalFields = (): Record<string, string[]> => {
         const finalSelectedFields: Record<string, string[]> = {};
         Object.keys(selectedFields).forEach(key => {
             finalSelectedFields[key] = Array.from(selectedFields[key]);
         });
+        return finalSelectedFields;
+    };
 
-        const newConfig = {
-            ...config,
-            selectedFields: finalSelectedFields
-        };
+    const handleNext = () => {
+        if (!config) return;
+        const newConfig = { ...config, selectedFields: getFinalFields() };
         localStorage.setItem('migrationConfig', JSON.stringify(newConfig));
         window.location.href = '/select-records';
+    };
+
+    const handleSaveTemplate = () => {
+        if (!config || !templateName.trim()) return;
+        saveTemplate(templateName.trim(), {
+            rootObject: config.rootObject,
+            children: config.children,
+            selectedFields: getFinalFields(),
+        });
+        setTemplateName('');
+        setShowSaveModal(false);
+        setSavedBanner(templateName.trim());
+        setTimeout(() => setSavedBanner(null), 3000);
     };
 
     if (loading || !config) {
@@ -145,6 +160,7 @@ export default function SelectFieldsPage() {
     const objectList = getAllObjectNames({ rootObject: config.rootObject, children: config.children });
 
     return (
+        <>
         <main className="min-h-screen bg-gray-50 p-8">
             <div className="max-w-4xl mx-auto space-y-6">
                 <div className="flex justify-between items-center bg-white p-6 rounded-xl shadow-sm border">
@@ -152,7 +168,20 @@ export default function SelectFieldsPage() {
                         <h1 className="text-2xl font-bold text-gray-900">Select Fields</h1>
                         <p className="text-gray-500">Choose which fields to migrate for each object.</p>
                     </div>
+                    <button
+                        onClick={() => setShowSaveModal(true)}
+                        className="px-4 py-2 text-sm text-gray-600 font-medium hover:bg-gray-100 rounded-lg flex items-center gap-2 border border-gray-300"
+                    >
+                        <BookmarkPlus size={16} /> Save as Template
+                    </button>
                 </div>
+
+                {savedBanner && (
+                    <div className="bg-green-50 border border-green-200 text-green-800 text-sm px-4 py-2 rounded-lg flex items-center gap-2">
+                        <BookmarkPlus size={16} />
+                        Template &quot;{savedBanner}&quot; saved successfully.
+                    </div>
+                )}
 
                 <div className="space-y-4">
                     {objectList.map(objName => {
@@ -247,5 +276,53 @@ export default function SelectFieldsPage() {
                 </div>
             </div>
         </main>
+
+        {/* Save Template Modal */}
+
+        {showSaveModal && (
+            <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-8 backdrop-blur-sm">
+                <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm flex flex-col overflow-hidden">
+                    <div className="p-4 border-b flex justify-between items-center bg-gray-50">
+                        <h3 className="font-bold text-lg text-gray-900">Save as Template</h3>
+                        <button onClick={() => setShowSaveModal(false)} className="p-2 hover:bg-gray-200 rounded-full">
+                            <XCircle size={20} className="text-gray-500" />
+                        </button>
+                    </div>
+                    <div className="p-4 space-y-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Template Name</label>
+                            <input
+                                type="text"
+                                placeholder="e.g. Account with Contacts"
+                                className="w-full p-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                value={templateName}
+                                onChange={(e) => setTemplateName(e.target.value)}
+                                onKeyDown={(e) => e.key === 'Enter' && handleSaveTemplate()}
+                                autoFocus
+                            />
+                        </div>
+                        <p className="text-xs text-gray-500">
+                            Saves the current object hierarchy and all field selections as a reusable template.
+                        </p>
+                    </div>
+                    <div className="p-4 border-t bg-gray-50 flex justify-end gap-2">
+                        <button
+                            onClick={() => setShowSaveModal(false)}
+                            className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg text-sm"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            onClick={handleSaveTemplate}
+                            disabled={!templateName.trim()}
+                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                        >
+                            <BookmarkPlus size={16} /> Save
+                        </button>
+                    </div>
+                </div>
+            </div>
+        )}
+        </>
     );
 }

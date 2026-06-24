@@ -4,17 +4,15 @@ import { cookies } from 'next/headers';
 import { createConnection } from '@/lib/salesforce/client';
 import { listAllObjects, describeObject } from '@/lib/migration-engine/metadata-service';
 import { buildQuery } from '@/lib/migration-engine/query-service';
+import { getSession } from '@/lib/session-store';
 
 // Helper to get Source Connection from cookies
 async function getSourceConnection() {
     const cookieStore = await cookies();
-    const token = cookieStore.get('sf_source_access_token')?.value;
-    const instanceUrl = cookieStore.get('sf_source_instance_url')?.value;
-
-    if (!token || !instanceUrl) {
-        throw new Error('Not connected to Source Org');
-    }
-    return createConnection({ accessToken: token, instanceUrl });
+    const sessionId = cookieStore.get('sf_source_session')?.value;
+    const session = sessionId ? getSession(sessionId) : undefined;
+    if (!session) throw new Error('Not connected to Source Org');
+    return createConnection({ accessToken: session.accessToken, instanceUrl: session.instanceUrl });
 }
 
 export async function getSourceObjects() {

@@ -26,13 +26,20 @@ export function buildQuery({ objectName, fields, whereClause, limit }: QueryOpti
 }
 
 /**
- * Executes a query and returns the records.
- * Handles extensive data sets could require QueryMore, but for MVP we might fetch in batches.
+ * Executes a query and fetches ALL records by following Salesforce's queryMore pagination.
+ * This handles datasets larger than the default 2,000-record page size.
  */
-export async function executeQuery(conn: Connection, query: string) {
+export async function executeQuery(conn: Connection, query: string): Promise<any[]> {
     try {
-        const result = await conn.query(query);
-        return result.records;
+        let result = await conn.query(query);
+        const records: any[] = [...result.records];
+
+        while (!result.done && result.nextRecordsUrl) {
+            result = await conn.queryMore(result.nextRecordsUrl);
+            records.push(...result.records);
+        }
+
+        return records;
     } catch (error) {
         console.error(`Query failed: ${query}`, error);
         throw error;
@@ -40,10 +47,20 @@ export async function executeQuery(conn: Connection, query: string) {
 }
 
 /**
- * Helper to build an IN clause safely.
+ * Splits IDs into chunks of 100 and builds a safe IN clause using OR to avoid
+ * Salesforce's ~4,000 character expression limit.
  */
 export function buildIdsWhereClause(field: string, ids: string[]): string {
-    if (ids.length === 0) return 'Id = null'; // Return empty set if no IDs
-    const quotedIds = ids.map(id => `'${id}'`).join(', ');
-    return `${field} IN (${quotedIds})`;
+    if (ids.length === 0) return 'Id = null';
+
+    const chunks: string[][] = [];
+    for (let i = 0; i < ids.length; i += 100) {
+        chunks.push(ids.slice(i, i + 100));
+    }
+
+    const clauses = chunks.map(
+        chunk => `${field} IN (${chunk.map(id => `'${id}'`).join(', ')})`
+    );
+
+    return clauses.length === 1 ? clauses[0] : `(${clauses.join(' OR ')})`;
 }
