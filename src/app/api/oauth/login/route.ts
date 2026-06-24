@@ -12,9 +12,7 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: 'Invalid type parameter' }, { status: 400 });
     }
 
-    // Construct Redirect URI based on configuration (Hardcoded to match Connected App)
-    // const origin = request.nextUrl.origin;
-    const redirectUri = `http://localhost:3000/api/oauth/callback`; // Must match Salesforce Connected App exactly
+    const redirectUri = `${process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin}/api/oauth/callback`;
 
     const loginUrl = env === 'sandbox' ? 'https://test.salesforce.com' : 'https://login.salesforce.com';
 

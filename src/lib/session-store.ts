@@ -1,5 +1,3 @@
-import fs from 'fs';
-import path from 'path';
 import crypto from 'crypto';
 
 export interface OrgSession {
@@ -9,43 +7,41 @@ export interface OrgSession {
     username?: string;
 }
 
-const DB_PATH = path.join(process.cwd(), 'session-store.json');
+const ALGORITHM = 'aes-256-gcm';
 
-function readStore(): Record<string, OrgSession> {
-    try {
-        if (fs.existsSync(DB_PATH)) {
-            const data = fs.readFileSync(DB_PATH, 'utf-8');
-            return JSON.parse(data);
-        }
-    } catch (e) {
-        console.error('Failed to read session store', e);
-    }
-    return {};
-}
-
-function writeStore(store: Record<string, OrgSession>): void {
-    try {
-        fs.writeFileSync(DB_PATH, JSON.stringify(store, null, 2));
-    } catch (e) {
-        console.error('Failed to write session store', e);
-    }
-}
+// Derive key once at module load — scryptSync is intentionally slow, so cache it
+const key = crypto.scryptSync(
+    process.env.SESSION_SECRET || 'dev-secret-change-in-production-min32ch',
+    'sf-migration-salt',
+    32
+);
 
 export function saveSession(data: OrgSession): string {
-    const id = crypto.randomUUID();
-    const store = readStore();
-    store[id] = data;
-    writeStore(store);
-    return id;
+    const iv = crypto.randomBytes(12);
+    const cipher = crypto.createCipheriv(ALGORITHM, key, iv);
+    const encrypted = Buffer.concat([
+        cipher.update(JSON.stringify(data), 'utf8'),
+        cipher.final(),
+    ]);
+    const authTag = cipher.getAuthTag();
+    return Buffer.concat([iv, authTag, encrypted]).toString('base64url');
 }
 
-export function getSession(id: string): OrgSession | undefined {
-    const store = readStore();
-    return store[id];
+export function getSession(token: string): OrgSession | undefined {
+    try {
+        const buf = Buffer.from(token, 'base64url');
+        const iv = buf.subarray(0, 12);
+        const authTag = buf.subarray(12, 28);
+        const encrypted = buf.subarray(28);
+        const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
+        decipher.setAuthTag(authTag);
+        const decrypted = Buffer.concat([decipher.update(encrypted), decipher.final()]);
+        return JSON.parse(decrypted.toString('utf8'));
+    } catch {
+        return undefined;
+    }
 }
 
-export function deleteSession(id: string): void {
-    const store = readStore();
-    delete store[id];
-    writeStore(store);
+export function deleteSession(_id: string): void {
+    // Sessions live in cookies — clear the cookie on the response to delete
 }

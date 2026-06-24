@@ -24,8 +24,7 @@ export async function GET(request: NextRequest) {
         }, { status: 400 });
     }
 
-    // const origin = request.nextUrl.origin;
-    const redirectUri = `http://localhost:3000/api/oauth/callback`; // Must match Login URI exactly
+    const redirectUri = `${process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin}/api/oauth/callback`;
 
     // PKCE & Env: Retrieve verifier and env
     const cookieStore = await cookies();
@@ -115,7 +114,7 @@ export async function GET(request: NextRequest) {
         cookieStore.delete(`sf_verifier_${type}`);
         cookieStore.delete(`sf_env_${type}`);
 
-        return NextResponse.redirect(`http://localhost:3000/`);
+        return NextResponse.redirect(`${process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin}/`);
     } catch (error) {
         console.error('OAuth Error:', error);
         return NextResponse.json({ error: 'Failed to authenticate' }, { status: 500 });
